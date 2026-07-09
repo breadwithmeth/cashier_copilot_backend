@@ -50,8 +50,18 @@ func RunMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 		pos_id VARCHAR(50) NOT NULL,
 		status VARCHAR(20) NOT NULL DEFAULT 'inactive',
 		roi_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+		source_stream_url TEXT NOT NULL DEFAULT '',
+		analytics_stream_url TEXT NOT NULL DEFAULT '',
+		analytics_stream_type VARCHAR(20) NOT NULL DEFAULT '',
+		analytics_stream_status VARCHAR(20) NOT NULL DEFAULT 'unknown',
+		analytics_stream_updated_at TIMESTAMPTZ,
 		created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 	);
+	ALTER TABLE cameras ADD COLUMN IF NOT EXISTS source_stream_url TEXT NOT NULL DEFAULT '';
+	ALTER TABLE cameras ADD COLUMN IF NOT EXISTS analytics_stream_url TEXT NOT NULL DEFAULT '';
+	ALTER TABLE cameras ADD COLUMN IF NOT EXISTS analytics_stream_type VARCHAR(20) NOT NULL DEFAULT '';
+	ALTER TABLE cameras ADD COLUMN IF NOT EXISTS analytics_stream_status VARCHAR(20) NOT NULL DEFAULT 'unknown';
+	ALTER TABLE cameras ADD COLUMN IF NOT EXISTS analytics_stream_updated_at TIMESTAMPTZ;
 
 	-- Таблица кассовых событий от 1С (POS)
 	CREATE TABLE IF NOT EXISTS pos_events (

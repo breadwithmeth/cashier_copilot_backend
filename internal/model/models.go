@@ -23,14 +23,40 @@ const (
 
 // Camera represents an IP camera configuration.
 type Camera struct {
-	ID        string          `json:"id"`
-	IPAddress string          `json:"ip_address"`
-	Username  string          `json:"username"`
-	Password  string          `json:"password,omitempty"`
-	PosID     string          `json:"pos_id"`
-	Status    string          `json:"status"`
-	ROIConfig json.RawMessage `json:"roi_config"`
-	CreatedAt time.Time       `json:"created_at"`
+	ID                       string          `json:"id"`
+	IPAddress                string          `json:"ip_address"`
+	Username                 string          `json:"username"`
+	Password                 string          `json:"password,omitempty"`
+	PosID                    string          `json:"pos_id"`
+	Status                   string          `json:"status"`
+	ROIConfig                json.RawMessage `json:"roi_config"`
+	SourceStreamURL          string          `json:"source_stream_url,omitempty"`
+	AnalyticsStreamURL       string          `json:"analytics_stream_url,omitempty"`
+	AnalyticsStreamType      string          `json:"analytics_stream_type,omitempty"`
+	AnalyticsStreamStatus    string          `json:"analytics_stream_status,omitempty"`
+	AnalyticsStreamUpdatedAt *time.Time      `json:"analytics_stream_updated_at,omitempty"`
+	CreatedAt                time.Time       `json:"created_at"`
+}
+
+// CameraStreamUpdateRequest updates source and analytics stream metadata.
+type CameraStreamUpdateRequest struct {
+	SourceStreamURL       string `json:"source_stream_url,omitempty"`
+	AnalyticsStreamURL    string `json:"analytics_stream_url,omitempty"`
+	AnalyticsStreamType   string `json:"analytics_stream_type,omitempty"`
+	AnalyticsStreamStatus string `json:"analytics_stream_status,omitempty"`
+}
+
+// CameraStreamInfo is the frontend-facing stream contract for a camera.
+type CameraStreamInfo struct {
+	CameraID                 string          `json:"camera_id"`
+	PosID                    string          `json:"pos_id"`
+	AnalyticsStreamURL       string          `json:"analytics_stream_url,omitempty"`
+	AnalyticsStreamType      string          `json:"analytics_stream_type,omitempty"`
+	AnalyticsStreamStatus    string          `json:"analytics_stream_status,omitempty"`
+	AnalyticsStreamUpdatedAt *time.Time      `json:"analytics_stream_updated_at,omitempty"`
+	SourceStreamURL          string          `json:"source_stream_url,omitempty"`
+	ROIConfig                json.RawMessage `json:"roi_config"`
+	OverlayEnabled           bool            `json:"overlay_enabled"`
 }
 
 // --- POS Events ---

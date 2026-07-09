@@ -18,6 +18,11 @@ The video server has two independent responsibilities:
    - Export clips from video buffer/storage.
    - Update task status to `completed` or `failed`.
 
+3. **Frontend analytics stream**
+   - Render zones, detections, tracks, and other overlays on top of the camera frame.
+   - Serve the processed output in a browser-consumable format such as HLS, WebRTC, or MJPEG.
+   - Publish the stream URL to the Go backend.
+
 ## Database Connection
 
 Use the same PostgreSQL database as the Go backend.
@@ -71,6 +76,49 @@ cv_events.camera_id -> cameras.id -> cameras.pos_id
 ```
 
 The video server must write `camera_id` exactly as stored in `cameras.id`.
+
+For frontend live view, the analytics service must publish its overlay output stream against the same `camera_id`.
+
+## Publishing Overlay Stream URL
+
+The frontend does not consume raw RTSP. The analytics service should expose its processed output with overlays as one of:
+
+- HLS, for example `http://analytics.local/streams/cam-1/index.m3u8`.
+- MJPEG, for example `http://analytics.local/streams/cam-1.mjpeg`.
+- WebRTC/WHEP URL.
+
+After the stream is ready, call the backend:
+
+```http
+POST /api/v1/analytics/cameras/{camera_id}/stream
+X-API-Key: <ANALYTICS_API_KEY>
+Content-Type: application/json
+```
+
+Request:
+
+```json
+{
+  "analytics_stream_url": "http://analytics.local/streams/cam-1/index.m3u8",
+  "analytics_stream_type": "hls",
+  "analytics_stream_status": "online"
+}
+```
+
+On failure/offline:
+
+```json
+{
+  "analytics_stream_status": "offline"
+}
+```
+
+The Go backend stores this in the `cameras` table. The frontend reads it from:
+
+```http
+GET /api/v1/cameras/{camera_id}/streams
+Authorization: Bearer <access_token>
+```
 
 Before starting detection for a camera, ensure it exists in `GET /api/v1/cameras` or in the database table:
 

@@ -131,6 +131,7 @@ Required:
 | `DATABASE_URL` | PostgreSQL connection string used by `pgxpool`. |
 | `JWT_SECRET` | HMAC secret used to sign access tokens. |
 | `POS_API_KEY` | API key required for `POST /api/v1/pos/event`. |
+| `ANALYTICS_API_KEY` | API key for analytics-service callbacks. Defaults to `POS_API_KEY` if omitted. |
 
 Optional:
 
@@ -259,6 +260,11 @@ Stores camera configuration and POS mapping.
 | `pos_id` | `varchar(50)` | POS terminal mapped to the camera. |
 | `status` | `varchar(20)` | Defaults to `inactive`. |
 | `roi_config` | `jsonb` | ROI polygon/config JSON. |
+| `source_stream_url` | `text` | Raw camera/source stream, usually RTSP. |
+| `analytics_stream_url` | `text` | Browser-consumable analytics output stream with overlays. |
+| `analytics_stream_type` | `varchar(20)` | `hls`, `mjpeg`, `webrtc`, `http`, `rtsp`, etc. |
+| `analytics_stream_status` | `varchar(20)` | `unknown`, `online`, `offline`, `failed`. |
+| `analytics_stream_updated_at` | `timestamptz` | Last analytics stream update time. |
 | `created_at` | `timestamptz` | Creation timestamp. |
 
 ### `pos_events`
@@ -764,6 +770,70 @@ Response:
 
 ```json
 []
+```
+
+### `GET /api/v1/cameras/{id}/streams`
+
+Returns stream metadata for a camera.
+
+Authentication:
+
+- Requires `Authorization: Bearer <token>`.
+- Allowed roles: `admin`, `operator`.
+
+Response:
+
+```json
+{
+  "camera_id": "cam-1",
+  "pos_id": "pos-1",
+  "analytics_stream_url": "http://analytics.local/streams/cam-1/index.m3u8",
+  "analytics_stream_type": "hls",
+  "analytics_stream_status": "online",
+  "analytics_stream_updated_at": "2026-07-09T13:00:00Z",
+  "roi_config": {},
+  "overlay_enabled": true
+}
+```
+
+For `admin` users, `source_stream_url` may also be returned. Operators should use `analytics_stream_url`; browsers generally cannot play raw RTSP.
+
+### `PATCH /api/v1/cameras/{id}/streams`
+
+Admin endpoint to update stream metadata manually.
+
+Authentication:
+
+- Requires `Authorization: Bearer <token>`.
+- Allowed role: `admin`.
+
+Request:
+
+```json
+{
+  "source_stream_url": "rtsp://camera/source",
+  "analytics_stream_url": "http://analytics.local/streams/cam-1/index.m3u8",
+  "analytics_stream_type": "hls",
+  "analytics_stream_status": "online"
+}
+```
+
+### `POST /api/v1/analytics/cameras/{id}/stream`
+
+Service-to-service callback used by the analytics service to publish its browser-ready output stream with overlays.
+
+Authentication:
+
+- Requires `X-API-Key: <ANALYTICS_API_KEY>`.
+
+Request:
+
+```json
+{
+  "analytics_stream_url": "http://analytics.local/streams/cam-1/index.m3u8",
+  "analytics_stream_type": "hls",
+  "analytics_stream_status": "online"
+}
 ```
 
 ## WebSocket API

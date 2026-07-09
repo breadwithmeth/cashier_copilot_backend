@@ -23,9 +23,13 @@ func NewCameraRepo(pool *pgxpool.Pool) *CameraRepo {
 // Insert saves a new camera configuration.
 func (r *CameraRepo) Insert(ctx context.Context, cam *model.Camera) error {
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO cameras (id, ip_address, username, password, pos_id, status, roi_config)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		`INSERT INTO cameras (
+			id, ip_address, username, password, pos_id, status, roi_config,
+			source_stream_url, analytics_stream_url, analytics_stream_type, analytics_stream_status
+		 )
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		cam.ID, cam.IPAddress, cam.Username, cam.Password, cam.PosID, cam.Status, cam.ROIConfig,
+		cam.SourceStreamURL, cam.AnalyticsStreamURL, cam.AnalyticsStreamType, cam.AnalyticsStreamStatus,
 	)
 	if err != nil {
 		return fmt.Errorf("insert camera: %w", err)
@@ -36,7 +40,9 @@ func (r *CameraRepo) Insert(ctx context.Context, cam *model.Camera) error {
 // List retrieves all cameras.
 func (r *CameraRepo) List(ctx context.Context) ([]model.Camera, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, ip_address, username, password, pos_id, status, roi_config, created_at
+		`SELECT id, ip_address, username, password, pos_id, status, roi_config,
+		        source_stream_url, analytics_stream_url, analytics_stream_type,
+		        analytics_stream_status, analytics_stream_updated_at, created_at
 		 FROM cameras
 		 ORDER BY created_at ASC`,
 	)
@@ -48,8 +54,7 @@ func (r *CameraRepo) List(ctx context.Context) ([]model.Camera, error) {
 	var cameras []model.Camera
 	for rows.Next() {
 		var c model.Camera
-		if err := rows.Scan(&c.ID, &c.IPAddress, &c.Username, &c.Password,
-			&c.PosID, &c.Status, &c.ROIConfig, &c.CreatedAt); err != nil {
+		if err := scanCamera(rows.Scan, &c); err != nil {
 			return nil, fmt.Errorf("scan camera: %w", err)
 		}
 		cameras = append(cameras, c)
@@ -62,13 +67,18 @@ func (r *CameraRepo) List(ctx context.Context) ([]model.Camera, error) {
 func (r *CameraRepo) GetByID(ctx context.Context, cameraID string) (*model.Camera, error) {
 	var c model.Camera
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, ip_address, username, password, pos_id, status, roi_config, created_at
+		`SELECT id, ip_address, username, password, pos_id, status, roi_config,
+		        source_stream_url, analytics_stream_url, analytics_stream_type,
+		        analytics_stream_status, analytics_stream_updated_at, created_at
 		 FROM cameras
 		 WHERE id = $1
 		 LIMIT 1`,
 		cameraID,
-	).Scan(&c.ID, &c.IPAddress, &c.Username, &c.Password,
-		&c.PosID, &c.Status, &c.ROIConfig, &c.CreatedAt)
+	).Scan(
+		&c.ID, &c.IPAddress, &c.Username, &c.Password, &c.PosID, &c.Status, &c.ROIConfig,
+		&c.SourceStreamURL, &c.AnalyticsStreamURL, &c.AnalyticsStreamType,
+		&c.AnalyticsStreamStatus, &c.AnalyticsStreamUpdatedAt, &c.CreatedAt,
+	)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, nil
@@ -83,13 +93,18 @@ func (r *CameraRepo) GetByID(ctx context.Context, cameraID string) (*model.Camer
 func (r *CameraRepo) GetByPosID(ctx context.Context, posID string) (*model.Camera, error) {
 	var c model.Camera
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, ip_address, username, password, pos_id, status, roi_config, created_at
+		`SELECT id, ip_address, username, password, pos_id, status, roi_config,
+		        source_stream_url, analytics_stream_url, analytics_stream_type,
+		        analytics_stream_status, analytics_stream_updated_at, created_at
 		 FROM cameras
 		 WHERE pos_id = $1
 		 LIMIT 1`,
 		posID,
-	).Scan(&c.ID, &c.IPAddress, &c.Username, &c.Password,
-		&c.PosID, &c.Status, &c.ROIConfig, &c.CreatedAt)
+	).Scan(
+		&c.ID, &c.IPAddress, &c.Username, &c.Password, &c.PosID, &c.Status, &c.ROIConfig,
+		&c.SourceStreamURL, &c.AnalyticsStreamURL, &c.AnalyticsStreamType,
+		&c.AnalyticsStreamStatus, &c.AnalyticsStreamUpdatedAt, &c.CreatedAt,
+	)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, nil
@@ -97,4 +112,46 @@ func (r *CameraRepo) GetByPosID(ctx context.Context, posID string) (*model.Camer
 		return nil, fmt.Errorf("get camera by pos_id: %w", err)
 	}
 	return &c, nil
+}
+
+// UpdateStreams updates source and analytics stream metadata for a camera.
+func (r *CameraRepo) UpdateStreams(ctx context.Context, cameraID string, req model.CameraStreamUpdateRequest) (*model.Camera, error) {
+	var c model.Camera
+	err := r.pool.QueryRow(ctx,
+		`UPDATE cameras
+		 SET source_stream_url = COALESCE(NULLIF($2, ''), source_stream_url),
+		     analytics_stream_url = COALESCE(NULLIF($3, ''), analytics_stream_url),
+		     analytics_stream_type = COALESCE(NULLIF($4, ''), analytics_stream_type),
+		     analytics_stream_status = COALESCE(NULLIF($5, ''), analytics_stream_status),
+		     analytics_stream_updated_at = CASE
+		       WHEN NULLIF($3, '') IS NOT NULL OR NULLIF($5, '') IS NOT NULL THEN CURRENT_TIMESTAMP
+		       ELSE analytics_stream_updated_at
+		     END
+		 WHERE id = $1
+		 RETURNING id, ip_address, username, password, pos_id, status, roi_config,
+		           source_stream_url, analytics_stream_url, analytics_stream_type,
+		           analytics_stream_status, analytics_stream_updated_at, created_at`,
+		cameraID, req.SourceStreamURL, req.AnalyticsStreamURL, req.AnalyticsStreamType, req.AnalyticsStreamStatus,
+	).Scan(
+		&c.ID, &c.IPAddress, &c.Username, &c.Password, &c.PosID, &c.Status, &c.ROIConfig,
+		&c.SourceStreamURL, &c.AnalyticsStreamURL, &c.AnalyticsStreamType,
+		&c.AnalyticsStreamStatus, &c.AnalyticsStreamUpdatedAt, &c.CreatedAt,
+	)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("update camera streams: %w", err)
+	}
+	return &c, nil
+}
+
+type cameraScanner func(dest ...interface{}) error
+
+func scanCamera(scan cameraScanner, c *model.Camera) error {
+	return scan(
+		&c.ID, &c.IPAddress, &c.Username, &c.Password, &c.PosID, &c.Status, &c.ROIConfig,
+		&c.SourceStreamURL, &c.AnalyticsStreamURL, &c.AnalyticsStreamType,
+		&c.AnalyticsStreamStatus, &c.AnalyticsStreamUpdatedAt, &c.CreatedAt,
+	)
 }

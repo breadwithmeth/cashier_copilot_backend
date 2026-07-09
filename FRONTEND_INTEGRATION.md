@@ -134,6 +134,8 @@ Base path:
 | `GET` | `/api/v1/violations` | Operator violations journal. |
 | `GET` | `/api/v1/cameras` | Camera list/settings page. |
 | `POST` | `/api/v1/cameras` | Add camera configuration. |
+| `GET` | `/api/v1/cameras/{id}/streams` | Get live analytics output stream URL. |
+| `PATCH` | `/api/v1/cameras/{id}/streams` | Admin stream metadata update. |
 | `POST` | `/api/v1/pos/event` | Development/test event injection. Usually sent by 1C, not frontend. |
 
 ## Common API Rules
@@ -431,7 +433,58 @@ Current backend behavior:
 
 - Create only.
 - Duplicate `id` returns server/database error.
-- No update or delete endpoint yet.
+- Stream metadata can be updated through `PATCH /api/v1/cameras/{id}/streams`.
+- No camera delete endpoint yet.
+
+### `GET /api/v1/cameras/{id}/streams`
+
+Returns the analytics output stream that frontend should render for a camera.
+
+```http
+GET /api/v1/cameras/tolstogo-90-kassa-1-cam-10/streams
+Authorization: Bearer <access_token>
+```
+
+Response:
+
+```json
+{
+  "camera_id": "tolstogo-90-kassa-1-cam-10",
+  "pos_id": "tolstogo-90-kassa-1",
+  "analytics_stream_url": "http://127.0.0.1:8888/tolstogo-90-kassa-1-cam-10/index.m3u8",
+  "analytics_stream_type": "hls",
+  "analytics_stream_status": "online",
+  "analytics_stream_updated_at": "2026-07-09T13:00:00Z",
+  "roi_config": {},
+  "overlay_enabled": true
+}
+```
+
+TypeScript type:
+
+```ts
+export interface CameraStreamInfo {
+  camera_id: string;
+  pos_id: string;
+  analytics_stream_url?: string;
+  analytics_stream_type?: "hls" | "mjpeg" | "webrtc" | "http" | "rtsp" | string;
+  analytics_stream_status?: "unknown" | "online" | "offline" | "failed" | string;
+  analytics_stream_updated_at?: string | null;
+  roi_config: unknown;
+  overlay_enabled: boolean;
+}
+```
+
+Frontend rendering rules:
+
+- Use `analytics_stream_url`, not raw RTSP.
+- If `analytics_stream_type = "hls"`, use `hls.js` for browsers without native HLS support.
+- If `analytics_stream_type = "mjpeg"`, use `<img src="...">`.
+- If `analytics_stream_type = "webrtc"`, use the WebRTC player/signaling contract from the analytics service.
+- If `analytics_stream_status` is not `online`, show unavailable/reconnecting state.
+- If `overlay_enabled = false`, show "analytics stream not ready".
+
+Browsers do not play `rtsp://` directly. The analytics service must expose a browser-consumable output stream with zones and boxes already rendered.
 
 ## WebSocket Integration
 

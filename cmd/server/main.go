@@ -122,7 +122,7 @@ func main() {
 	// CORS — allow all origins for development
 	corsHandler := cors.New(cors.Options{
 		AllowedOrigins:   []string{"*"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedMethods:   []string{"GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-API-Key", "X-Request-ID"},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: true,
@@ -150,6 +150,11 @@ func main() {
 		// Camera configuration
 		r.With(handler.RequireAuth(authService, model.RoleAdmin)).Post("/cameras", cameraHandler.HandleCreateCamera)
 		r.With(handler.RequireAuth(authService, model.RoleAdmin, model.RoleOperator)).Get("/cameras", cameraHandler.HandleListCameras)
+		r.With(handler.RequireAuth(authService, model.RoleAdmin, model.RoleOperator)).Get("/cameras/{id}/streams", cameraHandler.HandleGetCameraStreams)
+		r.With(handler.RequireAuth(authService, model.RoleAdmin)).Patch("/cameras/{id}/streams", cameraHandler.HandleUpdateCameraStreams)
+
+		// Analytics service callbacks
+		r.With(handler.RequireAPIKey(cfg.AnalyticsAPIKey)).Post("/analytics/cameras/{id}/stream", cameraHandler.HandleUpdateCameraStreams)
 
 		// User management
 		r.With(handler.RequireAuth(authService, model.RoleAdmin)).Get("/users", userHandler.HandleListUsers)
@@ -190,6 +195,9 @@ func main() {
 			"GET  /api/v1/violations",
 			"POST /api/v1/cameras",
 			"GET  /api/v1/cameras",
+			"GET  /api/v1/cameras/{id}/streams",
+			"PATCH /api/v1/cameras/{id}/streams",
+			"POST /api/v1/analytics/cameras/{id}/stream",
 			"GET  /ws/operator",
 			"GET  /ws/cashier?pos_id=XXX",
 			"GET  /health",

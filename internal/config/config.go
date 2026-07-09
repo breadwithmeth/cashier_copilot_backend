@@ -17,6 +17,9 @@ type Config struct {
 	// PosAPIKey authorizes POS webhook requests (required).
 	PosAPIKey string
 
+	// AnalyticsAPIKey authorizes analytics-service callbacks (defaults to PosAPIKey).
+	AnalyticsAPIKey string
+
 	// ServerPort is the HTTP server listen port (default: 8080).
 	ServerPort string
 
@@ -64,6 +67,7 @@ func Load() (*Config, error) {
 		DatabaseURL:            dbURL,
 		JWTSecret:              jwtSecret,
 		PosAPIKey:              posAPIKey,
+		AnalyticsAPIKey:        getEnvOrDefault("ANALYTICS_API_KEY", posAPIKey),
 		ServerPort:             getEnvOrDefault("SERVER_PORT", "8080"),
 		PollIntervalCvMs:       getEnvIntOrDefault("POLL_INTERVAL_CV_MS", 500),
 		PollIntervalTasksMs:    getEnvIntOrDefault("POLL_INTERVAL_TASKS_MS", 2000),
