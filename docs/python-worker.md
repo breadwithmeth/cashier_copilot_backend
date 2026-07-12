@@ -20,6 +20,8 @@ Python worker отвечает за:
 - отправку метрик по камерам;
 - отправку аналитических событий: нарушения, подозрительные действия, технические события;
 - отправку evidence: изображения, видеофрагменты, ссылки на файлы;
+- отправку транскриптов речи с привязкой к камере, чеку или sale session;
+- отправку ошибок обработки в `integration_errors`;
 - отправку логов обработки.
 
 Worker не использует пользовательский JWT. Авторизация выполняется по заголовку `X-Worker-Key`.
@@ -246,6 +248,10 @@ POST /api/workers/me/events
       "file_path": "/var/lib/cashier-worker/evidence/event-123.jpg",
       "public_url": "https://storage.example.com/events/event-123.jpg",
       "capturedAt": "2026-07-12T13:00:02.000Z",
+      "videoStartedAt": "2026-07-12T12:59:52.000Z",
+      "videoFinishedAt": "2026-07-12T13:00:12.000Z",
+      "preSeconds": 10,
+      "postSeconds": 10,
       "expiresAt": "2026-08-12T13:00:02.000Z",
       "metadata": {
         "width": 1280,
@@ -261,6 +267,14 @@ POST /api/workers/me/events
 `cameraId` должен принадлежать той же организации, что и worker. Если камера недоступна worker-у, backend вернет `400 Bad Request`.
 
 `deduplicationKey` нужен для идемпотентности. Если событие с таким ключом уже есть, backend вернет существующую запись вместо создания дубля.
+
+Backend умеет сам определить базовые нарушения по `metadata`:
+
+- `eventTypeCode: "PRODUCT_SCANNED"` и `metadata.customerPresent: false` -> `PRODUCT_SCANNED_WITHOUT_CUSTOMER`;
+- `metadata.customerPresent: true` и `metadata.receiptPresent: false` -> `CUSTOMER_WITHOUT_RECEIPT`;
+- `metadata.productGiven: true` и `metadata.paid: false` -> `PRODUCT_GIVEN_WITHOUT_PAYMENT`;
+- `metadata.receiptPresent: true` и `metadata.customerPresent: false` -> `RECEIPT_WITHOUT_CUSTOMER`;
+- `metadata.receivingMismatch: true` -> `RECEIVING_MISMATCH`.
 
 ### Отправка пачки событий
 
@@ -280,6 +294,118 @@ POST /api/workers/me/events/batch
     "title": "Продажа без чека"
   }
 ]
+```
+
+### Отправка транскрипта
+
+```http
+POST /api/workers/me/transcripts
+```
+
+Этот endpoint нужен для Python-сервиса распознавания речи. Транскрипт можно
+привязать к событию, камере, чеку или sale session. Минимально backend должен
+суметь определить `store_id` и `workplace_id` по одной из переданных связей.
+
+Пример с привязкой к чеку:
+
+```json
+{
+  "externalTranscriptId": "asr-000001",
+  "sourceService": "whisper-worker-01",
+  "cameraId": "1",
+  "externalReceiptId": "receipt-000001",
+  "startedAt": "2026-07-13T10:15:31.000Z",
+  "finishedAt": "2026-07-13T10:15:36.000Z",
+  "speaker": "CASHIER",
+  "text": "С вас шестьсот пятьдесят тенге",
+  "language": "ru",
+  "confidence": 0.91,
+  "audioUrl": "https://storage.example.com/audio/asr-000001.wav",
+  "words": [
+    { "word": "С", "start": 0.0, "end": 0.1 },
+    { "word": "вас", "start": 0.1, "end": 0.3 }
+  ],
+  "metadata": {
+    "model": "whisper-large-v3",
+    "amountSpoken": true
+  }
+}
+```
+
+Пример с привязкой к событию:
+
+```json
+{
+  "externalTranscriptId": "asr-000002",
+  "sourceService": "whisper-worker-01",
+  "eventId": "123",
+  "startedAt": "2026-07-13T10:15:31.000Z",
+  "text": "Оплата наличными?",
+  "speaker": "CASHIER",
+  "language": "ru"
+}
+```
+
+Поля:
+
+- `externalTranscriptId` + `sourceService` дают идемпотентность.
+- `eventId` связывает транскрипт с `analytics_events`.
+- `cameraId` связывает транскрипт с камерой.
+- `externalReceiptId` связывает транскрипт с `receipts`.
+- `saleSessionId` связывает транскрипт с `sale_sessions`.
+- `audioUrl` хранит ссылку на аудиофрагмент.
+- `words` хранит word-level timestamps, если ASR их умеет отдавать.
+
+Транскрипты сохраняются в `event_transcripts`.
+
+### Отправка пачки транскриптов
+
+```http
+POST /api/workers/me/transcripts/batch
+```
+
+Тело запроса - массив объектов того же формата:
+
+```json
+[
+  {
+    "externalTranscriptId": "asr-000001",
+    "sourceService": "whisper-worker-01",
+    "cameraId": "1",
+    "externalReceiptId": "receipt-000001",
+    "startedAt": "2026-07-13T10:15:31.000Z",
+    "text": "Здравствуйте",
+    "speaker": "CASHIER",
+    "language": "ru"
+  }
+]
+```
+
+### Ошибки обработки
+
+```http
+POST /api/workers/me/errors
+```
+
+Endpoint сохраняет ошибку в `integration_errors`, чтобы ее было видно в интерфейсе
+`/integration-errors` и на дашборде.
+
+Пример:
+
+```json
+{
+  "cameraId": "1",
+  "sourceSystem": "PYTHON_WORKER",
+  "entityType": "CAMERA_STREAM",
+  "externalId": "camera-1-main",
+  "errorCode": "RTSP_TIMEOUT",
+  "errorMessage": "RTSP stream did not respond within timeout",
+  "occurredAt": "2026-07-13T10:20:00.000Z",
+  "payload": {
+    "attempt": 3,
+    "streamType": "RTSP_VIDEO"
+  }
+}
 ```
 
 ### Логи
@@ -367,6 +493,12 @@ class CashierWorkerClient:
     def send_event(self, payload: dict):
         return self.request("POST", "/workers/me/events", json=payload)
 
+    def send_transcript(self, payload: dict):
+        return self.request("POST", "/workers/me/transcripts", json=payload)
+
+    def send_error(self, payload: dict):
+        return self.request("POST", "/workers/me/errors", json=payload)
+
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -395,6 +527,18 @@ if __name__ == "__main__":
         },
     })
     print(event)
+
+    transcript = client.send_transcript({
+        "externalTranscriptId": f"manual-asr-{camera_id}-{utc_now()}",
+        "sourceService": "manual-test",
+        "cameraId": camera_id,
+        "startedAt": utc_now(),
+        "speaker": "CASHIER",
+        "text": "Тестовый транскрипт от Python worker",
+        "language": "ru",
+        "confidence": 0.99,
+    })
+    print(transcript)
 ```
 
 Запуск:
@@ -413,7 +557,9 @@ python worker_client.py
 6. Отправлять heartbeat каждые `heartbeatIntervalSeconds`.
 7. Отправлять metrics не чаще одного раза в 30 секунд на камеру.
 8. При обнаружении события отправлять `POST /workers/me/events` с `deduplicationKey`.
-9. При штатном завершении отправить heartbeat со статусом `OFFLINE`.
+9. При распознавании речи отправлять `POST /workers/me/transcripts`.
+10. При ошибках RTSP, ASR, модели или storage отправлять `POST /workers/me/errors`.
+11. При штатном завершении отправить heartbeat со статусом `OFFLINE`.
 
 ## Обработка ошибок
 

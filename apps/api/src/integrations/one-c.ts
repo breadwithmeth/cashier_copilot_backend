@@ -104,6 +104,17 @@ export class OneCGuard implements CanActivate {
 export class OneCIntegrationController {
   constructor(private db: PrismaService) {}
 
+  private async violationContext(tx: any, organizationId: bigint, code: string) {
+    const [eventType, violation] = await Promise.all([
+      tx.event_types.findUnique({ where: { code } }),
+      tx.violation_types.findFirst({
+        where: { code, is_active: true, OR: [{ organization_id: organizationId }, { organization_id: null }] },
+        orderBy: { organization_id: 'desc' },
+      }),
+    ]);
+    return { eventType, violation };
+  }
+
   private paymentMethod(value?: string) {
     const raw = value?.trim().toUpperCase();
     if (!raw) return undefined;
@@ -154,36 +165,74 @@ export class OneCIntegrationController {
           select: { id: true },
         })
         : null;
-      const row = await this.db.product_scans.upsert({
-        where: { organization_id_external_scan_id: { organization_id: organization.id, external_scan_id: d.externalEventId } },
-        update: {
-          store_id: store.id,
-          workplace_id: workplace.id,
-          external_receipt_id: externalReceiptId,
-          receipt_id: receipt?.id,
-          barcode,
-          product_name: d.productName ?? d.payload?.productName ?? d.payload?.name,
-          quantity: d.quantity ?? d.payload?.quantity,
-          price: d.price ?? d.payload?.price,
-          currency: d.currency ?? d.payload?.currency,
-          occurred_at: new Date(d.occurredAt),
-          payload,
-        },
-        create: {
-          organization_id: organization.id,
-          store_id: store.id,
-          workplace_id: workplace.id,
-          external_scan_id: d.externalEventId,
-          external_receipt_id: externalReceiptId,
-          receipt_id: receipt?.id,
-          barcode,
-          product_name: d.productName ?? d.payload?.productName ?? d.payload?.name,
-          quantity: d.quantity ?? d.payload?.quantity,
-          price: d.price ?? d.payload?.price,
-          currency: d.currency ?? d.payload?.currency,
-          occurred_at: new Date(d.occurredAt),
-          payload,
-        },
+      const row = await this.db.$transaction(async (tx: any) => {
+        const scan = await tx.product_scans.upsert({
+          where: { organization_id_external_scan_id: { organization_id: organization.id, external_scan_id: d.externalEventId } },
+          update: {
+            store_id: store.id,
+            workplace_id: workplace.id,
+            external_receipt_id: externalReceiptId,
+            receipt_id: receipt?.id,
+            barcode,
+            product_name: d.productName ?? d.payload?.productName ?? d.payload?.name,
+            quantity: d.quantity ?? d.payload?.quantity,
+            price: d.price ?? d.payload?.price,
+            currency: d.currency ?? d.payload?.currency,
+            occurred_at: new Date(d.occurredAt),
+            payload,
+          },
+          create: {
+            organization_id: organization.id,
+            store_id: store.id,
+            workplace_id: workplace.id,
+            external_scan_id: d.externalEventId,
+            external_receipt_id: externalReceiptId,
+            receipt_id: receipt?.id,
+            barcode,
+            product_name: d.productName ?? d.payload?.productName ?? d.payload?.name,
+            quantity: d.quantity ?? d.payload?.quantity,
+            price: d.price ?? d.payload?.price,
+            currency: d.currency ?? d.payload?.currency,
+            occurred_at: new Date(d.occurredAt),
+            payload,
+          },
+        });
+        if (d.payload?.customerPresent === false) {
+          const { eventType, violation } = await this.violationContext(tx, organization.id, 'PRODUCT_SCANNED_WITHOUT_CUSTOMER');
+          if (eventType) {
+            const deduplicationKey = `1c:scan-without-customer:${d.externalEventId}`;
+            const existingEvent = await tx.analytics_events.findFirst({ where: { deduplication_key: deduplicationKey }, select: { id: true } });
+            if (existingEvent) {
+              await tx.analytics_events.update({
+                where: { id: existingEvent.id },
+                data: {
+                  receipt_id: receipt?.id,
+                  external_receipt_id: externalReceiptId,
+                  metadata: { ...payload, productScanId: String(scan.id), violationCode: 'PRODUCT_SCANNED_WITHOUT_CUSTOMER' },
+                },
+              });
+            } else {
+              await tx.analytics_events.create({
+                data: {
+                  organization_id: organization.id,
+                  store_id: store.id,
+                  workplace_id: workplace.id,
+                  event_type_id: eventType.id,
+                  receipt_id: receipt?.id,
+                  external_receipt_id: externalReceiptId,
+                  violation_type_id: violation?.id,
+                  started_at: new Date(d.occurredAt),
+                  severity: violation?.risk_level === 'HIGH' ? 'CRITICAL' : 'WARNING',
+                  title: violation?.name ?? 'Товар отсканирован без клиента',
+                  description: d.productName ?? d.payload?.productName ?? d.payload?.name ?? barcode,
+                  metadata: { ...payload, productScanId: String(scan.id), violationCode: 'PRODUCT_SCANNED_WITHOUT_CUSTOMER' },
+                  deduplication_key: deduplicationKey,
+                },
+              });
+            }
+          }
+        }
+        return scan;
       });
       return this.json({ id: row.id, status: 'received', type: 'product_scan' });
     }
@@ -332,6 +381,44 @@ export class OneCIntegrationController {
           metadata: {},
         },
       });
+
+      if (d.payload?.customerPresent === false || totals.customerPresent === false) {
+        const { eventType, violation } = await this.violationContext(tx, organization.id, 'RECEIPT_WITHOUT_CUSTOMER');
+        if (eventType) {
+          const deduplicationKey = `1c:receipt-without-customer:${d.externalReceiptId}`;
+          const existingEvent = await tx.analytics_events.findFirst({ where: { deduplication_key: deduplicationKey }, select: { id: true } });
+          if (existingEvent) {
+            await tx.analytics_events.update({
+              where: { id: existingEvent.id },
+              data: {
+                receipt_id: receipt.id,
+                external_receipt_id: d.externalReceiptId,
+                metadata: { ...payload, violationCode: 'RECEIPT_WITHOUT_CUSTOMER' },
+              },
+            });
+          } else {
+            await tx.analytics_events.create({
+              data: {
+                organization_id: organization.id,
+                store_id: store.id,
+                workplace_id: workplace.id,
+                event_type_id: eventType.id,
+                receipt_id: receipt.id,
+                external_receipt_id: d.externalReceiptId,
+                violation_type_id: violation?.id,
+                operation_type: receipt.operation_type,
+                risk_amount: receipt.receipt_total,
+                started_at: occurredAt,
+                severity: violation?.risk_level === 'HIGH' ? 'CRITICAL' : 'WARNING',
+                title: violation?.name ?? 'Чек без клиента в кадре',
+                description: `Чек ${d.externalReceiptId}`,
+                metadata: { ...payload, violationCode: 'RECEIPT_WITHOUT_CUSTOMER' },
+                deduplication_key: deduplicationKey,
+              },
+            });
+          }
+        }
+      }
 
       return receipt;
     });

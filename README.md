@@ -127,6 +127,35 @@ receipt/sale_session/camera -> video_observations
 analytics_event -> event_evidence
 ```
 
+## Интеграции
+
+- 1С отправляет сканы товаров и чеки в `/api/integrations/1c/*`.
+- Python analytics worker отправляет события, evidence, метрики и транскрипты в `/api/workers/me/*`.
+- Python analytics worker отправляет ошибки обработки в `/api/workers/me/errors`; они сохраняются в `integration_errors`.
+- Транскрипты сохраняются в `event_transcripts` и могут быть привязаны к событию, камере, чеку или sale session.
+
+## Интерфейс
+
+Основные рабочие экраны:
+
+- `/dashboard` - операционная панель по магазинам, рабочим местам, камерам, чекам, сессиям продаж, нарушениям и ошибкам.
+- `/events` - список событий и нарушений.
+- `/events/:id` - экран расследования: событие, чек, позиции чека, сканы, транскрипт, evidence и видео-наблюдения.
+- `/stores`, `/workplaces`, `/cameras`, `/streams` - настройка цепочки `магазин -> рабочее место -> камера -> поток`.
+- `/receipts`, `/product-scans`, `/sale-sessions`, `/transcripts`, `/integration-errors` - эксплуатационные таблицы.
+
+## Автоматические правила
+
+Backend автоматически создает аналитические события для базовых сценариев:
+
+- `PRODUCT_SCANNED_WITHOUT_CUSTOMER` - товар отсканирован, но в payload указано `customerPresent: false`;
+- `CUSTOMER_WITHOUT_RECEIPT` - клиент присутствует, но чек не найден;
+- `PRODUCT_GIVEN_WITHOUT_PAYMENT` - товар передан, но оплата не подтверждена;
+- `RECEIPT_WITHOUT_CUSTOMER` - чек пробит без клиента в кадре;
+- `RECEIVING_MISMATCH` - расхождение при приемке.
+
+Seed создает базовые `event_types` и `violation_types`, чтобы worker и 1С могли сразу отправлять эти сценарии после подготовки базы.
+
 ## Документация
 
 - Внешний Python analytics worker: [docs/python-worker.md](docs/python-worker.md)

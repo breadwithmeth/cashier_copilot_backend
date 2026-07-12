@@ -16,6 +16,9 @@ Each request is bound to a workplace:
 For `eventType: "PRODUCT_SCANNED"` the request is saved to `product_scans`.
 Other event types are saved to `external_events`.
 
+If `payload.customerPresent` is `false`, backend also creates an analytics event
+with violation code `PRODUCT_SCANNED_WITHOUT_CUSTOMER`.
+
 ```json
 {
   "storeCode": "store-1",
@@ -29,7 +32,9 @@ Other event types are saved to `external_events`.
   "quantity": 1,
   "price": 650,
   "currency": "KZT",
-  "payload": {}
+  "payload": {
+    "customerPresent": false
+  }
 }
 ```
 
@@ -83,6 +88,17 @@ If analytics events already contain the same `externalReceiptId` or `externalOrd
 the receipt endpoint links them by updating `receipt_id`, `external_receipt_id`,
 and `external_order_id`.
 
+If `payload.customerPresent` or `totals.customerPresent` is `false`, backend also
+creates an analytics event with violation code `RECEIPT_WITHOUT_CUSTOMER`.
+
+Recommended optional analytical flags:
+
+- `customerPresent` - customer is visible at the workplace.
+- `receiptPresent` - receipt/fiscal transaction is visible for the observed service.
+- `productGiven` - product was handed to the customer.
+- `paid` - payment was confirmed.
+- `riskAmount` - amount at risk for the generated event.
+
 ## Tables
 
 1C integration writes to these tables:
@@ -93,3 +109,8 @@ and `external_order_id`.
 - `sale_sessions` - sale/service session linked to the receipt.
 - `external_events` - fallback table for non-product-scan external events.
 - `integration_errors` - expected table for import and mapping errors.
+- `analytics_events` - generated violations when analytical flags indicate a risky case.
+
+Audio transcripts are not uploaded by 1C. They are uploaded by the Python worker
+to `/api/workers/me/transcripts` and linked to receipts or sale sessions by
+`externalReceiptId`, `saleSessionId`, `cameraId`, or `eventId`.

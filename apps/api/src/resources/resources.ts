@@ -19,6 +19,7 @@ const map: Record<string, string> = {
   'integration-errors': 'integration_errors',
   receivings: 'receivings',
   'receiving-items': 'receiving_items',
+  workers: 'analytics_workers',
   rois: 'camera_rois',
   rules: 'rules',
   models: 'models',
@@ -107,7 +108,7 @@ export class ResourcesController {
     if (['stores', 'rules', 'users'].includes(name)) where = this.orgWhere(user);
     if (name === 'workplaces') where = this.workplaceWhere(user);
     if (name === 'cameras') where = this.cameraWhere(user);
-    if (['product-scans', 'receipts', 'receipt-items', 'sale-sessions', 'observations', 'transcripts', 'service-checks', 'violation-types', 'integration-errors', 'receivings', 'receiving-items'].includes(name)) where = this.orgWhere(user);
+    if (['product-scans', 'receipts', 'receipt-items', 'sale-sessions', 'observations', 'transcripts', 'service-checks', 'violation-types', 'integration-errors', 'receivings', 'receiving-items', 'workers'].includes(name)) where = this.orgWhere(user);
     if (['streams', 'rois'].includes(name)) where = this.cameraChildWhere(user);
 
     const rows = await this.repo(name).findMany({ where, take: 500 });

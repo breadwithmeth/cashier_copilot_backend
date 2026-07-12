@@ -18,18 +18,23 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     ['/stores', 'Магазины'],
     ['/workplaces', 'Рабочие места'],
     ['/cameras', 'Камеры'],
+    ['/streams', 'Потоки'],
+    ['/receipts', 'Чеки'],
+    ['/product-scans', 'Сканы'],
+    ['/sale-sessions', 'Продажи'],
+    ['/transcripts', 'Транскрипты'],
+    ['/integration-errors', 'Ошибки'],
     ['/workers', 'Воркеры'],
     ['/rules', 'Правила'],
     ['/models', 'Модели'],
-    ['/users', 'Пользователи'],
-    ['/reports', 'Отчёты']
+    ['/users', 'Пользователи']
   ]
 
   return (
     <div className="min-h-screen md:grid md:grid-cols-[240px_1fr]">
       <aside className="p-5 bg-slate-900 nav">
         <b className="text-cyan-400 text-xl">Cashier Copilot</b>
-        <nav className="mt-8 space-y-1">
+        <nav className="mt-8 max-h-[calc(100vh-120px)] space-y-1 overflow-y-auto pr-1">
           {links.map(x => (
             <Link 
               key={x[0]} 

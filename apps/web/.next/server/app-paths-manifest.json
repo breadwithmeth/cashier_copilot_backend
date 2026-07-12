@@ -1,6 +1,8 @@
 {
-  "/events/page": "app/events/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
   "/[resource]/page": "app/[resource]/page.js",
   "/dashboard/page": "app/dashboard/page.js",
+  "/events/[id]/page": "app/events/[id]/page.js",
+  "/events/page": "app/events/page.js",
   "/page": "app/page.js"
 }
