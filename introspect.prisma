@@ -1,0 +1,639 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model analytics_events {
+  id                    BigInt               @id @default(autoincrement())
+  organization_id       BigInt
+  store_id              BigInt
+  workplace_id          BigInt?
+  camera_id             BigInt?
+  event_type_id         BigInt
+  rule_id               BigInt?
+  started_at            DateTime             @db.Timestamptz(6)
+  finished_at           DateTime?            @db.Timestamptz(6)
+  severity              String               @default("medium")
+  status                String               @default("open")
+  confidence            Float?
+  duration_ms           BigInt?
+  employee_id           BigInt?
+  shift_id              BigInt?
+  external_order_id     String?
+  external_receipt_id   String?
+  title                 String
+  description           String?
+  metadata              Json                 @default("{}")
+  created_at            DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime             @default(now()) @db.Timestamptz(6)
+  processing_session_id BigInt?
+  worker_id             BigInt?
+  deduplication_key     String?
+  received_at           DateTime             @default(now()) @db.Timestamptz(6)
+  cameras               cameras?             @relation(fields: [camera_id], references: [id], onUpdate: NoAction)
+  employees             employees?           @relation(fields: [employee_id], references: [id], onUpdate: NoAction)
+  event_types           event_types          @relation(fields: [event_type_id], references: [id], onUpdate: NoAction)
+  organizations         organizations        @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  processing_sessions   processing_sessions? @relation(fields: [processing_session_id], references: [id], onUpdate: NoAction)
+  rules                 rules?               @relation(fields: [rule_id], references: [id], onUpdate: NoAction)
+  shifts                shifts?              @relation(fields: [shift_id], references: [id], onUpdate: NoAction)
+  stores                stores               @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  analytics_workers     analytics_workers?   @relation(fields: [worker_id], references: [id], onUpdate: NoAction)
+  workplaces            workplaces?          @relation(fields: [workplace_id], references: [id], onUpdate: NoAction)
+  event_evidence        event_evidence[]
+  event_objects         event_objects[]
+  event_reviews         event_reviews[]
+  event_transcripts     event_transcripts[]
+  notifications         notifications[]
+
+  @@index([camera_id, started_at(sort: Desc)], map: "idx_analytics_events_camera_time")
+  @@index([metadata], map: "idx_analytics_events_metadata_gin", type: Gin)
+  @@index([organization_id, started_at(sort: Desc)], map: "idx_analytics_events_org_time")
+  @@index([status, severity, started_at(sort: Desc)], map: "idx_analytics_events_status")
+  @@index([store_id, started_at(sort: Desc)], map: "idx_analytics_events_store_time")
+  @@index([organization_id, created_at(sort: Desc)], map: "idx_analytics_events_org_created")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model camera_metrics {
+  id                BigInt             @id @default(autoincrement())
+  camera_id         BigInt
+  recorded_at       DateTime           @default(now()) @db.Timestamptz(6)
+  status            String             @default("unknown")
+  input_fps         Float?
+  processing_fps    Float?
+  latency_ms        Float?
+  dropped_frames    BigInt?
+  reconnect_count   BigInt?
+  cpu_percent       Float?
+  gpu_percent       Float?
+  gpu_memory_mb     Float?
+  metadata          Json               @default("{}")
+  worker_id         BigInt?
+  cameras           cameras            @relation(fields: [camera_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  analytics_workers analytics_workers? @relation(fields: [worker_id], references: [id], onUpdate: NoAction)
+
+  @@index([camera_id, recorded_at(sort: Desc)], map: "idx_camera_metrics_camera_time")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model camera_models {
+  id                   BigInt         @id @default(autoincrement())
+  camera_id            BigInt
+  model_version_id     BigInt
+  roi_id               BigInt?
+  process_fps          Float?
+  confidence_threshold Float?
+  config               Json           @default("{}")
+  is_enabled           Boolean        @default(true)
+  cameras              cameras        @relation(fields: [camera_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  model_versions       model_versions @relation(fields: [model_version_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  camera_rois          camera_rois?   @relation(fields: [roi_id], references: [id], onUpdate: NoAction)
+
+  @@unique([camera_id, model_version_id, roi_id])
+  @@index([camera_id], map: "idx_camera_models_camera")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model camera_rois {
+  id                                      BigInt          @id @default(autoincrement())
+  camera_id                               BigInt
+  roi_type_id                             BigInt
+  name                                    String
+  shape_type                              String          @default("polygon")
+  coordinates                             Json
+  is_enabled                              Boolean         @default(true)
+  created_at                              DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at                              DateTime        @default(now()) @db.Timestamptz(6)
+  camera_models                           camera_models[]
+  cameras                                 cameras         @relation(fields: [camera_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  roi_types                               roi_types       @relation(fields: [roi_type_id], references: [id], onUpdate: NoAction)
+  detections                              detections[]
+  tracks_tracks_end_roi_idTocamera_rois   tracks[]        @relation("tracks_end_roi_idTocamera_rois")
+  tracks_tracks_start_roi_idTocamera_rois tracks[]        @relation("tracks_start_roi_idTocamera_rois")
+
+  @@unique([camera_id, name])
+  @@index([camera_id], map: "idx_camera_rois_camera")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model camera_streams {
+  id                  BigInt                @id @default(autoincrement())
+  camera_id           BigInt
+  stream_type         String
+  stream_url          String
+  subtype             String?
+  width               Int?
+  height              Int?
+  source_fps          Float?
+  process_fps         Float?
+  transport           String                @default("tcp")
+  is_primary          Boolean               @default(false)
+  is_enabled          Boolean               @default(true)
+  created_at          DateTime              @default(now()) @db.Timestamptz(6)
+  cameras             cameras               @relation(fields: [camera_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  processing_sessions processing_sessions[]
+
+  @@index([camera_id], map: "idx_camera_streams_camera")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model cameras {
+  id                        BigInt                     @id @default(autoincrement())
+  store_id                  BigInt
+  workplace_id              BigInt?
+  name                      String
+  code                      String
+  manufacturer              String?
+  model                     String?
+  nvr_channel               String?
+  location_description      String?
+  status                    String                     @default("unknown")
+  last_online_at            DateTime?                  @db.Timestamptz(6)
+  last_frame_at             DateTime?                  @db.Timestamptz(6)
+  processing_enabled        Boolean                    @default(true)
+  is_active                 Boolean                    @default(true)
+  created_at                DateTime                   @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime                   @default(now()) @db.Timestamptz(6)
+  analytics_events          analytics_events[]
+  camera_metrics            camera_metrics[]
+  camera_models             camera_models[]
+  camera_rois               camera_rois[]
+  camera_streams            camera_streams[]
+  stores                    stores                     @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  workplaces                workplaces?                @relation(fields: [workplace_id], references: [id], onUpdate: NoAction)
+  detections                detections[]
+  processing_sessions       processing_sessions[]
+  rule_assignments          rule_assignments[]
+  tracks                    tracks[]
+  worker_camera_assignments worker_camera_assignments?
+
+  @@unique([store_id, code])
+  @@index([store_id], map: "idx_cameras_store")
+  @@index([workplace_id], map: "idx_cameras_workplace")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model detections {
+  id                    BigInt               @id @default(autoincrement())
+  camera_id             BigInt
+  processing_session_id BigInt?
+  model_version_id      BigInt?
+  roi_id                BigInt?
+  detected_at           DateTime             @db.Timestamptz(6)
+  frame_number          BigInt?
+  class_name            String
+  confidence            Float
+  x1                    Float
+  y1                    Float
+  x2                    Float
+  y2                    Float
+  track_id              String?
+  attributes            Json                 @default("{}")
+  cameras               cameras              @relation(fields: [camera_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  model_versions        model_versions?      @relation(fields: [model_version_id], references: [id], onUpdate: NoAction)
+  processing_sessions   processing_sessions? @relation(fields: [processing_session_id], references: [id], onUpdate: NoAction)
+  camera_rois           camera_rois?         @relation(fields: [roi_id], references: [id], onUpdate: NoAction)
+
+  @@index([attributes], map: "idx_detections_attributes_gin", type: Gin)
+  @@index([camera_id, detected_at(sort: Desc)], map: "idx_detections_camera_time")
+  @@index([processing_session_id, frame_number], map: "idx_detections_session_frame")
+}
+
+model employees {
+  id               BigInt             @id @default(autoincrement())
+  organization_id  BigInt
+  external_id      String?
+  full_name        String
+  role             String             @default("cashier")
+  is_active        Boolean            @default(true)
+  created_at       DateTime           @default(now()) @db.Timestamptz(6)
+  analytics_events analytics_events[]
+  organizations    organizations      @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  event_reviews    event_reviews[]
+  shifts           shifts[]
+
+  @@unique([organization_id, external_id])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model event_evidence {
+  id               BigInt           @id @default(autoincrement())
+  event_id         BigInt
+  evidence_type    String
+  storage_type     String
+  file_path        String
+  mime_type        String?
+  file_size        BigInt?
+  captured_at      DateTime         @db.Timestamptz(6)
+  expires_at       DateTime?        @db.Timestamptz(6)
+  metadata         Json             @default("{}")
+  created_at       DateTime         @default(now()) @db.Timestamptz(6)
+  public_url       String?
+  analytics_events analytics_events @relation(fields: [event_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([event_id, captured_at], map: "idx_event_evidence_event")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model event_objects {
+  id               BigInt           @id @default(autoincrement())
+  event_id         BigInt
+  object_role      String?
+  object_type      String
+  track_id         BigInt?
+  confidence       Float?
+  bbox             Json?
+  attributes       Json             @default("{}")
+  created_at       DateTime         @default(now()) @db.Timestamptz(6)
+  analytics_events analytics_events @relation(fields: [event_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  tracks           tracks?          @relation(fields: [track_id], references: [id], onUpdate: NoAction)
+
+  @@index([event_id], map: "idx_event_objects_event")
+}
+
+model event_reviews {
+  id               BigInt           @id @default(autoincrement())
+  event_id         BigInt
+  reviewer_id      BigInt?
+  decision         String
+  comment          String?
+  previous_status  String?
+  new_status       String?
+  reviewed_at      DateTime         @default(now()) @db.Timestamptz(6)
+  analytics_events analytics_events @relation(fields: [event_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  employees        employees?       @relation(fields: [reviewer_id], references: [id], onUpdate: NoAction)
+
+  @@index([event_id, reviewed_at(sort: Desc)], map: "idx_event_reviews_event")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model event_types {
+  id               BigInt             @id @default(autoincrement())
+  code             String             @unique
+  name             String
+  category         String
+  default_severity String             @default("info")
+  description      String?
+  analytics_events analytics_events[]
+  rules            rules[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model external_events {
+  id                BigInt         @id @default(autoincrement())
+  source_system     String
+  event_type        String
+  external_event_id String
+  store_id          BigInt?
+  workplace_id      BigInt?
+  occurred_at       DateTime       @db.Timestamptz(6)
+  received_at       DateTime       @default(now()) @db.Timestamptz(6)
+  payload           Json
+  processing_status String         @default("pending")
+  processing_error  String?
+  organization_id   BigInt?
+  created_at        DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime       @default(now()) @db.Timestamptz(6)
+  organizations     organizations? @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  stores            stores?        @relation(fields: [store_id], references: [id], onUpdate: NoAction)
+  workplaces        workplaces?    @relation(fields: [workplace_id], references: [id], onUpdate: NoAction)
+
+  @@unique([source_system, external_event_id])
+  @@index([payload], map: "idx_external_events_payload_gin", type: Gin)
+  @@index([processing_status, received_at], map: "idx_external_events_status")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model model_versions {
+  id                   BigInt          @id @default(autoincrement())
+  model_id             BigInt
+  version              String
+  weights_path         String
+  config               Json            @default("{}")
+  confidence_threshold Float?
+  iou_threshold        Float?
+  metrics              Json            @default("{}")
+  is_active            Boolean         @default(true)
+  created_at           DateTime        @default(now()) @db.Timestamptz(6)
+  camera_models        camera_models[]
+  detections           detections[]
+  models               models          @relation(fields: [model_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([model_id, version])
+}
+
+model models {
+  id             BigInt           @id @default(autoincrement())
+  name           String
+  model_type     String
+  framework      String
+  task_type      String
+  description    String?
+  created_at     DateTime         @default(now()) @db.Timestamptz(6)
+  model_versions model_versions[]
+
+  @@unique([name, model_type])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model notifications {
+  id               BigInt           @id @default(autoincrement())
+  event_id         BigInt
+  channel          String
+  recipient        String
+  status           String           @default("pending")
+  payload          Json             @default("{}")
+  created_at       DateTime         @default(now()) @db.Timestamptz(6)
+  sent_at          DateTime?        @db.Timestamptz(6)
+  acknowledged_at  DateTime?        @db.Timestamptz(6)
+  error_message    String?
+  attempts         Int              @default(0)
+  analytics_events analytics_events @relation(fields: [event_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([status, created_at], map: "idx_notifications_status")
+}
+
+model organizations {
+  id                BigInt              @id @default(autoincrement())
+  name              String
+  code              String              @unique
+  timezone          String              @default("UTC")
+  is_active         Boolean             @default(true)
+  created_at        DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime            @default(now()) @db.Timestamptz(6)
+  analytics_events  analytics_events[]
+  analytics_workers analytics_workers[]
+  audit_logs        audit_logs[]
+  employees         employees[]
+  external_events   external_events[]
+  rule_assignments  rule_assignments[]
+  stores            stores[]
+  users             users[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model processing_sessions {
+  id                 BigInt             @id @default(autoincrement())
+  camera_id          BigInt
+  stream_id          BigInt?
+  worker_name        String
+  worker_host        String?
+  started_at         DateTime           @default(now()) @db.Timestamptz(6)
+  finished_at        DateTime?          @db.Timestamptz(6)
+  status             String             @default("running")
+  frames_read        BigInt             @default(0)
+  frames_processed   BigInt             @default(0)
+  frames_dropped     BigInt             @default(0)
+  average_fps        Float?
+  average_latency_ms Float?
+  error_message      String?
+  created_at         DateTime           @default(now()) @db.Timestamptz(6)
+  worker_id          BigInt?
+  metadata           Json               @default("{}")
+  analytics_events   analytics_events[]
+  detections         detections[]
+  cameras            cameras            @relation(fields: [camera_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  camera_streams     camera_streams?    @relation(fields: [stream_id], references: [id], onUpdate: NoAction)
+  analytics_workers  analytics_workers? @relation(fields: [worker_id], references: [id], onUpdate: NoAction)
+  tracks             tracks[]
+
+  @@index([camera_id, started_at(sort: Desc)], map: "idx_processing_sessions_camera_started")
+}
+
+model roi_types {
+  id          BigInt        @id @default(autoincrement())
+  code        String        @unique
+  name        String
+  camera_rois camera_rois[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model rule_assignments {
+  id                BigInt         @id @default(autoincrement())
+  rule_id           BigInt
+  organization_id   BigInt?
+  store_id          BigInt?
+  workplace_id      BigInt?
+  camera_id         BigInt?
+  settings_override Json           @default("{}")
+  is_enabled        Boolean        @default(true)
+  created_at        DateTime       @default(now()) @db.Timestamptz(6)
+  cameras           cameras?       @relation(fields: [camera_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  organizations     organizations? @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  rules             rules          @relation(fields: [rule_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  stores            stores?        @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  workplaces        workplaces?    @relation(fields: [workplace_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model rules {
+  id               BigInt             @id @default(autoincrement())
+  code             String             @unique
+  name             String
+  event_type_id    BigInt
+  rule_type        String
+  severity         String             @default("medium")
+  conditions       Json               @default("{}")
+  settings         Json               @default("{}")
+  is_active        Boolean            @default(true)
+  created_at       DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime           @default(now()) @db.Timestamptz(6)
+  analytics_events analytics_events[]
+  rule_assignments rule_assignments[]
+  event_types      event_types        @relation(fields: [event_type_id], references: [id], onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model shifts {
+  id                BigInt             @id @default(autoincrement())
+  store_id          BigInt
+  workplace_id      BigInt?
+  employee_id       BigInt?
+  external_shift_id String?
+  opened_at         DateTime           @db.Timestamptz(6)
+  closed_at         DateTime?          @db.Timestamptz(6)
+  status            String             @default("open")
+  created_at        DateTime           @default(now()) @db.Timestamptz(6)
+  analytics_events  analytics_events[]
+  employees         employees?         @relation(fields: [employee_id], references: [id], onUpdate: NoAction)
+  stores            stores             @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  workplaces        workplaces?        @relation(fields: [workplace_id], references: [id], onUpdate: NoAction)
+
+  @@unique([store_id, external_shift_id])
+  @@index([employee_id, opened_at(sort: Desc)], map: "idx_shifts_employee_time")
+}
+
+model stores {
+  id               BigInt             @id @default(autoincrement())
+  organization_id  BigInt
+  name             String
+  code             String
+  city             String?
+  address          String?
+  is_active        Boolean            @default(true)
+  created_at       DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime           @default(now()) @db.Timestamptz(6)
+  analytics_events analytics_events[]
+  cameras          cameras[]
+  external_events  external_events[]
+  rule_assignments rule_assignments[]
+  shifts           shifts[]
+  organizations    organizations      @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  workplaces       workplaces[]
+
+  @@unique([organization_id, code])
+  @@index([organization_id], map: "idx_stores_organization")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model tracks {
+  id                                           BigInt               @id @default(autoincrement())
+  camera_id                                    BigInt
+  processing_session_id                        BigInt?
+  tracker_track_id                             String
+  object_type                                  String
+  first_seen_at                                DateTime             @db.Timestamptz(6)
+  last_seen_at                                 DateTime             @db.Timestamptz(6)
+  max_confidence                               Float?
+  duration_ms                                  BigInt?
+  start_roi_id                                 BigInt?
+  end_roi_id                                   BigInt?
+  attributes                                   Json                 @default("{}")
+  event_objects                                event_objects[]
+  cameras                                      cameras              @relation(fields: [camera_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  camera_rois_tracks_end_roi_idTocamera_rois   camera_rois?         @relation("tracks_end_roi_idTocamera_rois", fields: [end_roi_id], references: [id], onUpdate: NoAction)
+  processing_sessions                          processing_sessions? @relation(fields: [processing_session_id], references: [id], onUpdate: NoAction)
+  camera_rois_tracks_start_roi_idTocamera_rois camera_rois?         @relation("tracks_start_roi_idTocamera_rois", fields: [start_roi_id], references: [id], onUpdate: NoAction)
+
+  @@unique([processing_session_id, tracker_track_id])
+  @@index([camera_id, first_seen_at(sort: Desc)], map: "idx_tracks_camera_time")
+}
+
+model workplaces {
+  id               BigInt             @id @default(autoincrement())
+  store_id         BigInt
+  name             String
+  workplace_type   String             @default("checkout")
+  external_id      String?
+  is_active        Boolean            @default(true)
+  created_at       DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime           @default(now()) @db.Timestamptz(6)
+  analytics_events analytics_events[]
+  cameras          cameras[]
+  external_events  external_events[]
+  rule_assignments rule_assignments[]
+  shifts           shifts[]
+  stores           stores             @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([store_id, external_id])
+  @@index([store_id], map: "idx_workplaces_store")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model analytics_workers {
+  id                        BigInt                      @id @default(autoincrement())
+  organization_id           BigInt
+  name                      String
+  api_key_hash              String
+  host                      String
+  version                   String
+  status                    String                      @default("OFFLINE")
+  last_heartbeat_at         DateTime?                   @db.Timestamptz(6)
+  capabilities              Json                        @default("{}")
+  metadata                  Json                        @default("{}")
+  created_at                DateTime                    @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime                    @default(now()) @db.Timestamptz(6)
+  analytics_events          analytics_events[]
+  organizations             organizations               @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  camera_metrics            camera_metrics[]
+  processing_sessions       processing_sessions[]
+  worker_camera_assignments worker_camera_assignments[]
+
+  @@unique([organization_id, name])
+  @@index([last_heartbeat_at], map: "idx_analytics_workers_heartbeat")
+}
+
+model audit_logs {
+  id              BigInt         @id @default(autoincrement())
+  organization_id BigInt?
+  user_id         BigInt?
+  action          String
+  entity_type     String
+  entity_id       String?
+  old_value       Json?
+  new_value       Json?
+  ip_address      String?
+  user_agent      String?
+  created_at      DateTime       @default(now()) @db.Timestamptz(6)
+  organizations   organizations? @relation(fields: [organization_id], references: [id], onUpdate: NoAction)
+  users           users?         @relation(fields: [user_id], references: [id], onUpdate: NoAction)
+
+  @@index([organization_id, created_at(sort: Desc)], map: "idx_audit_logs_org_created")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model event_transcripts {
+  id               BigInt           @id @default(autoincrement())
+  event_id         BigInt
+  started_at       DateTime         @db.Timestamptz(6)
+  finished_at      DateTime?        @db.Timestamptz(6)
+  speaker          String           @default("UNKNOWN")
+  text             String
+  language         String?
+  confidence       Float?
+  words            Json?
+  metadata         Json             @default("{}")
+  created_at       DateTime         @default(now()) @db.Timestamptz(6)
+  analytics_events analytics_events @relation(fields: [event_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([event_id, started_at], map: "idx_event_transcripts_event")
+}
+
+model refresh_tokens {
+  id         BigInt    @id @default(autoincrement())
+  user_id    BigInt
+  token_hash String    @unique
+  expires_at DateTime  @db.Timestamptz(6)
+  revoked_at DateTime? @db.Timestamptz(6)
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  ip_address String?
+  user_agent String?
+  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([user_id, expires_at], map: "idx_refresh_tokens_user_expires")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model users {
+  id              BigInt           @id @default(autoincrement())
+  organization_id BigInt?
+  email           String           @unique
+  password_hash   String
+  full_name       String
+  role            String
+  is_active       Boolean          @default(true)
+  last_login_at   DateTime?        @db.Timestamptz(6)
+  created_at      DateTime         @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime         @default(now()) @db.Timestamptz(6)
+  audit_logs      audit_logs[]
+  refresh_tokens  refresh_tokens[]
+  organizations   organizations?   @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model worker_camera_assignments {
+  id                BigInt            @id @default(autoincrement())
+  worker_id         BigInt
+  camera_id         BigInt            @unique
+  is_enabled        Boolean           @default(true)
+  config_version    Int               @default(1)
+  assigned_at       DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime          @default(now()) @db.Timestamptz(6)
+  cameras           cameras           @relation(fields: [camera_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  analytics_workers analytics_workers @relation(fields: [worker_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}

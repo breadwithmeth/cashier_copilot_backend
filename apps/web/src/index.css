@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body { @apply bg-slate-950 text-slate-100 antialiased; }
+input, select, textarea { @apply bg-slate-900 border border-slate-700 rounded-lg px-3 py-2; }
+button { @apply rounded-lg px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50; }
+.card { @apply bg-slate-900 border border-slate-800 rounded-xl p-5; }
+.muted { @apply text-slate-400; }
+.nav a { @apply block px-3 py-2 rounded-lg text-slate-300; }
+.nav a.active { @apply bg-slate-800 text-white; }
