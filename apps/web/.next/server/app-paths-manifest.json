@@ -1,0 +1,6 @@
+{
+  "/events/page": "app/events/page.js",
+  "/[resource]/page": "app/[resource]/page.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/page": "app/page.js"
+}

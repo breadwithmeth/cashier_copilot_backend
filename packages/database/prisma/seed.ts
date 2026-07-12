@@ -11,7 +11,7 @@ async function main() {
   });
   const email = process.env.BOOTSTRAP_ADMIN_USERNAME?.includes('@')
     ? process.env.BOOTSTRAP_ADMIN_USERNAME
-    : `${process.env.BOOTSTRAP_ADMIN_USERNAME ?? 'admin'}@local`;
+    : `${process.env.BOOTSTRAP_ADMIN_USERNAME ?? 'admin'}@example.com`;
   await db.users.upsert({
     where: { email },
     update: {},

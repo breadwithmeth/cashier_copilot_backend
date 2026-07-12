@@ -1,2 +1,62 @@
-import { Module } from '@nestjs/common';import { APP_GUARD } from '@nestjs/core';import { ConfigModule } from '@nestjs/config';import { JwtModule } from '@nestjs/jwt';import { ScheduleModule } from '@nestjs/schedule';import { ThrottlerGuard,ThrottlerModule } from '@nestjs/throttler';import { LoggerModule } from 'nestjs-pino';import { PrismaService } from './common/prisma.service';import { JwtGuard,RolesGuard,WorkerGuard } from './common/security';import { AuthController } from './auth/auth';import { RealtimeGateway } from './realtime/realtime';import { EventsController,EventsService,WorkerEventsController } from './events/events';import { WorkersController } from './workers/workers';import { ResourcesController } from './resources/resources';import { DashboardController } from './dashboard/dashboard';import { SchedulerService } from './scheduler/scheduler';
-@Module({imports:[ConfigModule.forRoot({isGlobal:true}),JwtModule.register({global:true}),ScheduleModule.forRoot(),ThrottlerModule.forRoot([{ttl:60000,limit:120}]),LoggerModule.forRoot({pinoHttp:{redact:['req.headers.authorization','req.headers.x-worker-key','password','streamUrl'],genReqId:req=>String(req.headers['x-request-id']??crypto.randomUUID())}})],controllers:[AuthController,EventsController,WorkerEventsController,WorkersController,ResourcesController,DashboardController],providers:[PrismaService,WorkerGuard,RealtimeGateway,EventsService,SchedulerService,{provide:APP_GUARD,useClass:ThrottlerGuard},{provide:APP_GUARD,useClass:JwtGuard},{provide:APP_GUARD,useClass:RolesGuard}]})export class AppModule{}
+import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ConfigModule } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
+import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { LoggerModule } from 'nestjs-pino';
+import { PrismaService } from './common/prisma.service';
+import { JwtGuard, RolesGuard, WorkerGuard } from './common/security';
+import { AuthController } from './auth/auth';
+import { RealtimeGateway } from './realtime/realtime';
+import { EventsController, EventsService, WorkerEventsController } from './events/events';
+import { WorkersController } from './workers/workers';
+import { ResourcesController } from './resources/resources';
+import { DashboardController } from './dashboard/dashboard';
+import { SchedulerService } from './scheduler/scheduler';
+import { OneCGuard, OneCIntegrationController } from './integrations/one-c';
+import { WorkerTranscriptsController } from './transcripts/transcripts';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    JwtModule.register({ global: true }),
+    ScheduleModule.forRoot(),
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 120 }]),
+    LoggerModule.forRoot({
+      pinoHttp: {
+        redact: [
+          'req.headers.authorization',
+          'req.headers.x-worker-key',
+          'req.headers.x-1c-key',
+          'req.headers.x-one-c-key',
+          'password',
+          'streamUrl',
+        ],
+        genReqId: req => String(req.headers['x-request-id'] ?? crypto.randomUUID()),
+      },
+    }),
+  ],
+  controllers: [
+    AuthController,
+    EventsController,
+    WorkerEventsController,
+    WorkersController,
+    ResourcesController,
+    DashboardController,
+    OneCIntegrationController,
+    WorkerTranscriptsController,
+  ],
+  providers: [
+    PrismaService,
+    WorkerGuard,
+    OneCGuard,
+    RealtimeGateway,
+    EventsService,
+    SchedulerService,
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: JwtGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
+  ],
+})
+export class AppModule {}

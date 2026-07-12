@@ -18,19 +18,24 @@ model analytics_events {
   rule_id               BigInt?
   started_at            DateTime             @db.Timestamptz(6)
   finished_at           DateTime?            @db.Timestamptz(6)
-  severity              String               @default("medium")
-  status                String               @default("open")
+  severity              String               @default("INFO")
+  status                String               @default("NEW")
   confidence            Float?
   duration_ms           BigInt?
   employee_id           BigInt?
   shift_id              BigInt?
   external_order_id     String?
   external_receipt_id   String?
+  receipt_id            BigInt?
+  sale_session_id       BigInt?
+  violation_type_id     BigInt?
+  operation_type        String?
+  risk_amount           Decimal?             @db.Decimal(18, 2)
   title                 String
   description           String?
   metadata              Json                 @default("{}")
   created_at            DateTime             @default(now()) @db.Timestamptz(6)
-  updated_at            DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime             @default(now()) @updatedAt @db.Timestamptz(6)
   processing_session_id BigInt?
   worker_id             BigInt?
   deduplication_key     String?
@@ -45,6 +50,9 @@ model analytics_events {
   stores                stores               @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   analytics_workers     analytics_workers?   @relation(fields: [worker_id], references: [id], onUpdate: NoAction)
   workplaces            workplaces?          @relation(fields: [workplace_id], references: [id], onUpdate: NoAction)
+  receipts              receipts?            @relation(fields: [receipt_id], references: [id], onUpdate: NoAction)
+  sale_sessions         sale_sessions?       @relation(fields: [sale_session_id], references: [id], onUpdate: NoAction)
+  violation_types       violation_types?     @relation(fields: [violation_type_id], references: [id], onUpdate: NoAction)
   event_evidence        event_evidence[]
   event_objects         event_objects[]
   event_reviews         event_reviews[]
@@ -57,6 +65,9 @@ model analytics_events {
   @@index([status, severity, started_at(sort: Desc)], map: "idx_analytics_events_status")
   @@index([store_id, started_at(sort: Desc)], map: "idx_analytics_events_store_time")
   @@index([organization_id, created_at(sort: Desc)], map: "idx_analytics_events_org_created")
+  @@index([receipt_id], map: "idx_analytics_events_receipt")
+  @@index([sale_session_id], map: "idx_analytics_events_sale_session")
+  @@index([violation_type_id], map: "idx_analytics_events_violation_type")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -146,7 +157,7 @@ model camera_streams {
 model cameras {
   id                        BigInt                     @id @default(autoincrement())
   store_id                  BigInt
-  workplace_id              BigInt?
+  workplace_id              BigInt
   name                      String
   code                      String
   manufacturer              String?
@@ -159,19 +170,22 @@ model cameras {
   processing_enabled        Boolean                    @default(true)
   is_active                 Boolean                    @default(true)
   created_at                DateTime                   @default(now()) @db.Timestamptz(6)
-  updated_at                DateTime                   @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime                   @default(now()) @updatedAt @db.Timestamptz(6)
   analytics_events          analytics_events[]
+  event_evidence            event_evidence[]
+  video_observations        video_observations[]
   camera_metrics            camera_metrics[]
   camera_models             camera_models[]
   camera_rois               camera_rois[]
   camera_streams            camera_streams[]
   stores                    stores                     @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  workplaces                workplaces?                @relation(fields: [workplace_id], references: [id], onUpdate: NoAction)
+  workplaces                workplaces                 @relation(fields: [workplace_id], references: [id], onUpdate: NoAction)
   detections                detections[]
   processing_sessions       processing_sessions[]
   rule_assignments          rule_assignments[]
   tracks                    tracks[]
   worker_camera_assignments worker_camera_assignments?
+  eventTranscripts          event_transcripts[]
 
   @@unique([store_id, code])
   @@index([store_id], map: "idx_cameras_store")
@@ -216,6 +230,9 @@ model employees {
   analytics_events analytics_events[]
   organizations    organizations      @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   event_reviews    event_reviews[]
+  receipts         receipts[]
+  sale_sessions    sale_sessions[]
+  receivings       receivings[]
   shifts           shifts[]
 
   @@unique([organization_id, external_id])
@@ -223,21 +240,34 @@ model employees {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model event_evidence {
-  id               BigInt           @id @default(autoincrement())
-  event_id         BigInt
-  evidence_type    String
-  storage_type     String
-  file_path        String
-  mime_type        String?
-  file_size        BigInt?
-  captured_at      DateTime         @db.Timestamptz(6)
-  expires_at       DateTime?        @db.Timestamptz(6)
-  metadata         Json             @default("{}")
-  created_at       DateTime         @default(now()) @db.Timestamptz(6)
-  public_url       String?
-  analytics_events analytics_events @relation(fields: [event_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                    BigInt                  @id @default(autoincrement())
+  event_id              BigInt
+  camera_id             BigInt?
+  receipt_id            BigInt?
+  evidence_type         String
+  storage_type          String
+  file_path             String
+  mime_type             String?
+  file_size             BigInt?
+  captured_at           DateTime                @db.Timestamptz(6)
+  expires_at            DateTime?               @db.Timestamptz(6)
+  metadata              Json                    @default("{}")
+  created_at            DateTime                @default(now()) @db.Timestamptz(6)
+  public_url            String?
+  availability_status   String                  @default("AVAILABLE")
+  video_started_at      DateTime?               @db.Timestamptz(6)
+  video_finished_at     DateTime?               @db.Timestamptz(6)
+  pre_seconds           Int?
+  post_seconds          Int?
+  analytics_events      analytics_events        @relation(fields: [event_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  cameras               cameras?                @relation(fields: [camera_id], references: [id], onUpdate: NoAction)
+  receipts              receipts?               @relation(fields: [receipt_id], references: [id], onUpdate: NoAction)
+  video_observations    video_observations[]
+  service_check_results service_check_results[]
 
   @@index([event_id, captured_at], map: "idx_event_evidence_event")
+  @@index([receipt_id], map: "idx_event_evidence_receipt")
+  @@index([camera_id, captured_at], map: "idx_event_evidence_camera")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -278,7 +308,7 @@ model event_types {
   code             String             @unique
   name             String
   category         String
-  default_severity String             @default("info")
+  default_severity String             @default("INFO")
   description      String?
   analytics_events analytics_events[]
   rules            rules[]
@@ -299,7 +329,7 @@ model external_events {
   processing_error  String?
   organization_id   BigInt?
   created_at        DateTime       @default(now()) @db.Timestamptz(6)
-  updated_at        DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime       @default(now()) @updatedAt @db.Timestamptz(6)
   organizations     organizations? @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   stores            stores?        @relation(fields: [store_id], references: [id], onUpdate: NoAction)
   workplaces        workplaces?    @relation(fields: [workplace_id], references: [id], onUpdate: NoAction)
@@ -347,7 +377,7 @@ model notifications {
   event_id         BigInt
   channel          String
   recipient        String
-  status           String           @default("pending")
+  status           String           @default("PENDING")
   payload          Json             @default("{}")
   created_at       DateTime         @default(now()) @db.Timestamptz(6)
   sent_at          DateTime?        @db.Timestamptz(6)
@@ -360,21 +390,32 @@ model notifications {
 }
 
 model organizations {
-  id                BigInt              @id @default(autoincrement())
-  name              String
-  code              String              @unique
-  timezone          String              @default("UTC")
-  is_active         Boolean             @default(true)
-  created_at        DateTime            @default(now()) @db.Timestamptz(6)
-  updated_at        DateTime            @default(now()) @db.Timestamptz(6)
-  analytics_events  analytics_events[]
-  analytics_workers analytics_workers[]
-  audit_logs        audit_logs[]
-  employees         employees[]
-  external_events   external_events[]
-  rule_assignments  rule_assignments[]
-  stores            stores[]
-  users             users[]
+  id                    BigInt                  @id @default(autoincrement())
+  name                  String
+  code                  String                  @unique
+  timezone              String                  @default("UTC")
+  is_active             Boolean                 @default(true)
+  created_at            DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime                @default(now()) @updatedAt @db.Timestamptz(6)
+  analytics_events      analytics_events[]
+  analytics_workers     analytics_workers[]
+  audit_logs            audit_logs[]
+  employees             employees[]
+  external_events       external_events[]
+  product_scans         product_scans[]
+  receipts              receipts[]
+  receipt_items         receipt_items[]
+  sale_sessions         sale_sessions[]
+  video_observations    video_observations[]
+  service_check_results service_check_results[]
+  violation_types       violation_types[]
+  integration_errors    integration_errors[]
+  receivings            receivings[]
+  receiving_items       receiving_items[]
+  rule_assignments      rule_assignments[]
+  stores                stores[]
+  users                 users[]
+  eventTranscripts      event_transcripts[]
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -443,7 +484,7 @@ model rules {
   settings         Json               @default("{}")
   is_active        Boolean            @default(true)
   created_at       DateTime           @default(now()) @db.Timestamptz(6)
-  updated_at       DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime           @default(now()) @updatedAt @db.Timestamptz(6)
   analytics_events analytics_events[]
   rule_assignments rule_assignments[]
   event_types      event_types        @relation(fields: [event_type_id], references: [id], onUpdate: NoAction)
@@ -470,22 +511,31 @@ model shifts {
 }
 
 model stores {
-  id               BigInt             @id @default(autoincrement())
-  organization_id  BigInt
-  name             String
-  code             String
-  city             String?
-  address          String?
-  is_active        Boolean            @default(true)
-  created_at       DateTime           @default(now()) @db.Timestamptz(6)
-  updated_at       DateTime           @default(now()) @db.Timestamptz(6)
-  analytics_events analytics_events[]
-  cameras          cameras[]
-  external_events  external_events[]
-  rule_assignments rule_assignments[]
-  shifts           shifts[]
-  organizations    organizations      @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  workplaces       workplaces[]
+  id                 BigInt               @id @default(autoincrement())
+  organization_id    BigInt
+  name               String
+  code               String
+  city               String?
+  address            String?
+  is_active          Boolean              @default(true)
+  created_at         DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime             @default(now()) @updatedAt @db.Timestamptz(6)
+  analytics_events   analytics_events[]
+  cameras            cameras[]
+  external_events    external_events[]
+  product_scans      product_scans[]
+  receipts           receipts[]
+  receipt_items      receipt_items[]
+  sale_sessions      sale_sessions[]
+  video_observations video_observations[]
+  integration_errors integration_errors[]
+  receivings         receivings[]
+  receiving_items    receiving_items[]
+  rule_assignments   rule_assignments[]
+  shifts             shifts[]
+  organizations      organizations        @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  workplaces         workplaces[]
+  eventTranscripts   event_transcripts[]
 
   @@unique([organization_id, code])
   @@index([organization_id], map: "idx_stores_organization")
@@ -516,23 +566,296 @@ model tracks {
 }
 
 model workplaces {
-  id               BigInt             @id @default(autoincrement())
-  store_id         BigInt
-  name             String
-  workplace_type   String             @default("checkout")
-  external_id      String?
-  is_active        Boolean            @default(true)
-  created_at       DateTime           @default(now()) @db.Timestamptz(6)
-  updated_at       DateTime           @default(now()) @db.Timestamptz(6)
-  analytics_events analytics_events[]
-  cameras          cameras[]
-  external_events  external_events[]
-  rule_assignments rule_assignments[]
-  shifts           shifts[]
-  stores           stores             @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                 BigInt               @id @default(autoincrement())
+  store_id           BigInt
+  name               String
+  workplace_type     String               @default("checkout")
+  external_id        String
+  is_active          Boolean              @default(true)
+  created_at         DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime             @default(now()) @updatedAt @db.Timestamptz(6)
+  analytics_events   analytics_events[]
+  cameras            cameras[]
+  external_events    external_events[]
+  product_scans      product_scans[]
+  receipts           receipts[]
+  receipt_items      receipt_items[]
+  sale_sessions      sale_sessions[]
+  video_observations video_observations[]
+  integration_errors integration_errors[]
+  receivings         receivings[]
+  receiving_items    receiving_items[]
+  rule_assignments   rule_assignments[]
+  shifts             shifts[]
+  stores             stores               @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  eventTranscripts   event_transcripts[]
 
   @@unique([store_id, external_id])
   @@index([store_id], map: "idx_workplaces_store")
+}
+
+model product_scans {
+  id                  BigInt        @id @default(autoincrement())
+  organization_id     BigInt
+  store_id            BigInt
+  workplace_id        BigInt
+  external_scan_id    String
+  external_receipt_id String?
+  receipt_id          BigInt?
+  barcode             String
+  product_name        String?
+  quantity            Decimal?      @db.Decimal(18, 6)
+  price               Decimal?      @db.Decimal(18, 2)
+  currency            String?
+  occurred_at         DateTime      @db.Timestamptz(6)
+  received_at         DateTime      @default(now()) @db.Timestamptz(6)
+  payload             Json          @default("{}")
+  organizations       organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  receipts            receipts?     @relation(fields: [receipt_id], references: [id], onUpdate: NoAction)
+  stores              stores        @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  workplaces          workplaces    @relation(fields: [workplace_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([organization_id, external_scan_id])
+  @@index([receipt_id], map: "idx_product_scans_receipt_id")
+  @@index([workplace_id, occurred_at(sort: Desc)], map: "idx_product_scans_workplace_time")
+  @@index([external_receipt_id], map: "idx_product_scans_receipt")
+}
+
+model receipts {
+  id                  BigInt               @id @default(autoincrement())
+  organization_id     BigInt
+  store_id            BigInt
+  workplace_id        BigInt
+  external_receipt_id String
+  external_order_id   String?
+  cashier_external_id String?
+  employee_id         BigInt?
+  operation_type      String               @default("SALE")
+  receipt_status      String               @default("CLOSED")
+  payment_method      String?
+  receipt_total       Decimal?             @db.Decimal(18, 2)
+  paid_amount         Decimal?             @db.Decimal(18, 2)
+  change_amount       Decimal?             @db.Decimal(18, 2)
+  bonus_amount        Decimal?             @db.Decimal(18, 2)
+  discount_amount     Decimal?             @db.Decimal(18, 2)
+  occurred_at         DateTime             @db.Timestamptz(6)
+  printed_at          DateTime?            @db.Timestamptz(6)
+  closed_at           DateTime?            @db.Timestamptz(6)
+  received_at         DateTime             @default(now()) @db.Timestamptz(6)
+  items               Json                 @default("[]")
+  totals              Json                 @default("{}")
+  payload             Json                 @default("{}")
+  organizations       organizations        @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  employees           employees?           @relation(fields: [employee_id], references: [id], onUpdate: NoAction)
+  analytics_events    analytics_events[]
+  event_evidence      event_evidence[]
+  product_scans       product_scans[]
+  receipt_items       receipt_items[]
+  sale_sessions       sale_sessions[]
+  video_observations  video_observations[]
+  stores              stores               @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  workplaces          workplaces           @relation(fields: [workplace_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  eventTranscripts    event_transcripts[]
+
+  @@unique([organization_id, external_receipt_id])
+  @@index([workplace_id, occurred_at(sort: Desc)], map: "idx_receipts_workplace_time")
+  @@index([external_order_id], map: "idx_receipts_order")
+  @@index([employee_id, occurred_at(sort: Desc)], map: "idx_receipts_employee_time")
+}
+
+model receipt_items {
+  id                  BigInt        @id @default(autoincrement())
+  receipt_id          BigInt
+  organization_id     BigInt
+  store_id            BigInt
+  workplace_id        BigInt
+  line_number         Int
+  external_product_id String?
+  barcode             String?
+  product_name        String
+  quantity            Decimal       @db.Decimal(18, 6)
+  price               Decimal       @db.Decimal(18, 2)
+  line_total          Decimal       @db.Decimal(18, 2)
+  discount_amount     Decimal?      @db.Decimal(18, 2)
+  is_container        Boolean       @default(false)
+  container_type      String?
+  payload             Json          @default("{}")
+  receipts            receipts      @relation(fields: [receipt_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  organizations       organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  stores              stores        @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  workplaces          workplaces    @relation(fields: [workplace_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([receipt_id, line_number])
+  @@index([barcode], map: "idx_receipt_items_barcode")
+  @@index([organization_id, external_product_id], map: "idx_receipt_items_product")
+}
+
+model sale_sessions {
+  id                          BigInt                  @id @default(autoincrement())
+  organization_id             BigInt
+  store_id                    BigInt
+  workplace_id                BigInt
+  receipt_id                  BigInt?
+  employee_id                 BigInt?
+  operation_type              String                  @default("SALE")
+  started_at                  DateTime                @db.Timestamptz(6)
+  finished_at                 DateTime?               @db.Timestamptz(6)
+  customer_present            Boolean?
+  customer_present_confidence Float?
+  service_score               Float?
+  status                      String                  @default("OPEN")
+  metadata                    Json                    @default("{}")
+  created_at                  DateTime                @default(now()) @db.Timestamptz(6)
+  organizations               organizations           @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  stores                      stores                  @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  workplaces                  workplaces              @relation(fields: [workplace_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  receipts                    receipts?               @relation(fields: [receipt_id], references: [id], onUpdate: NoAction)
+  employees                   employees?              @relation(fields: [employee_id], references: [id], onUpdate: NoAction)
+  analytics_events            analytics_events[]
+  video_observations          video_observations[]
+  service_check_results       service_check_results[]
+  eventTranscripts            event_transcripts[]
+
+  @@unique([receipt_id])
+  @@index([workplace_id, started_at(sort: Desc)], map: "idx_sale_sessions_workplace_time")
+  @@index([receipt_id], map: "idx_sale_sessions_receipt")
+  @@index([employee_id, started_at(sort: Desc)], map: "idx_sale_sessions_employee_time")
+}
+
+model video_observations {
+  id               BigInt          @id @default(autoincrement())
+  organization_id  BigInt
+  store_id         BigInt
+  workplace_id     BigInt
+  camera_id        BigInt?
+  receipt_id       BigInt?
+  sale_session_id  BigInt?
+  evidence_id      BigInt?
+  observed_at      DateTime        @db.Timestamptz(6)
+  observation_type String
+  barcode          String?
+  product_name     String?
+  quantity         Decimal?        @db.Decimal(18, 6)
+  confidence       Float?
+  metadata         Json            @default("{}")
+  created_at       DateTime        @default(now()) @db.Timestamptz(6)
+  organizations    organizations   @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  stores           stores          @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  workplaces       workplaces      @relation(fields: [workplace_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  cameras          cameras?        @relation(fields: [camera_id], references: [id], onUpdate: NoAction)
+  receipts         receipts?       @relation(fields: [receipt_id], references: [id], onUpdate: NoAction)
+  sale_sessions    sale_sessions?  @relation(fields: [sale_session_id], references: [id], onUpdate: NoAction)
+  event_evidence   event_evidence? @relation(fields: [evidence_id], references: [id], onUpdate: NoAction)
+
+  @@index([workplace_id, observed_at(sort: Desc)], map: "idx_video_observations_workplace_time")
+  @@index([receipt_id], map: "idx_video_observations_receipt")
+  @@index([sale_session_id], map: "idx_video_observations_sale_session")
+  @@index([observation_type, observed_at(sort: Desc)], map: "idx_video_observations_type_time")
+}
+
+model service_check_results {
+  id              BigInt          @id @default(autoincrement())
+  organization_id BigInt
+  sale_session_id BigInt
+  criterion_code  String
+  result          String
+  confidence      Float?
+  evidence_id     BigInt?
+  comment         String?
+  created_at      DateTime        @default(now()) @db.Timestamptz(6)
+  organizations   organizations   @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  sale_sessions   sale_sessions   @relation(fields: [sale_session_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  event_evidence  event_evidence? @relation(fields: [evidence_id], references: [id], onUpdate: NoAction)
+
+  @@unique([sale_session_id, criterion_code])
+  @@index([organization_id, criterion_code], map: "idx_service_checks_criterion")
+}
+
+model violation_types {
+  id                         BigInt             @id @default(autoincrement())
+  organization_id            BigInt?
+  code                       String
+  name                       String
+  risk_level                 String
+  employee_notification_text String?
+  visible_to_roles           Json               @default("[]")
+  is_active                  Boolean            @default(true)
+  created_at                 DateTime           @default(now()) @db.Timestamptz(6)
+  organizations              organizations?     @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  analytics_events           analytics_events[]
+
+  @@unique([organization_id, code])
+  @@index([risk_level], map: "idx_violation_types_risk")
+}
+
+model integration_errors {
+  id              BigInt         @id @default(autoincrement())
+  organization_id BigInt?
+  store_id        BigInt?
+  workplace_id    BigInt?
+  source_system   String
+  entity_type     String
+  external_id     String?
+  error_code      String
+  error_message   String
+  payload         Json           @default("{}")
+  status          String         @default("OPEN")
+  occurred_at     DateTime       @default(now()) @db.Timestamptz(6)
+  resolved_at     DateTime?      @db.Timestamptz(6)
+  organizations   organizations? @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  stores          stores?        @relation(fields: [store_id], references: [id], onUpdate: NoAction)
+  workplaces      workplaces?    @relation(fields: [workplace_id], references: [id], onUpdate: NoAction)
+
+  @@index([status, occurred_at(sort: Desc)], map: "idx_integration_errors_status")
+  @@index([source_system, entity_type, external_id], map: "idx_integration_errors_external")
+}
+
+model receivings {
+  id                  BigInt            @id @default(autoincrement())
+  organization_id     BigInt
+  store_id            BigInt
+  workplace_id        BigInt?
+  employee_id         BigInt?
+  external_invoice_id String
+  supplier_id         String?
+  supplier_name       String?
+  started_at          DateTime          @db.Timestamptz(6)
+  finished_at         DateTime?         @db.Timestamptz(6)
+  status              String            @default("OPEN")
+  payload             Json              @default("{}")
+  organizations       organizations     @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  stores              stores            @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  workplaces          workplaces?       @relation(fields: [workplace_id], references: [id], onUpdate: NoAction)
+  employees           employees?        @relation(fields: [employee_id], references: [id], onUpdate: NoAction)
+  receiving_items     receiving_items[]
+
+  @@unique([organization_id, external_invoice_id])
+  @@index([store_id, started_at(sort: Desc)], map: "idx_receivings_store_time")
+}
+
+model receiving_items {
+  id                   BigInt        @id @default(autoincrement())
+  receiving_id         BigInt
+  organization_id      BigInt
+  store_id             BigInt
+  workplace_id         BigInt?
+  external_product_id  String?
+  barcode              String?
+  product_name         String
+  expected_quantity    Decimal       @db.Decimal(18, 6)
+  actual_quantity      Decimal?      @db.Decimal(18, 6)
+  expiry_date          DateTime?     @db.Date
+  package_damaged      Boolean?
+  defect_detected      Boolean?
+  discrepancy_reported Boolean?
+  payload              Json          @default("{}")
+  receivings           receivings    @relation(fields: [receiving_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  organizations        organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  stores               stores        @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  workplaces           workplaces?   @relation(fields: [workplace_id], references: [id], onUpdate: NoAction)
+
+  @@index([receiving_id], map: "idx_receiving_items_receiving")
+  @@index([barcode], map: "idx_receiving_items_barcode")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -548,7 +871,7 @@ model analytics_workers {
   capabilities              Json                        @default("{}")
   metadata                  Json                        @default("{}")
   created_at                DateTime                    @default(now()) @db.Timestamptz(6)
-  updated_at                DateTime                    @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime                    @default(now()) @updatedAt @db.Timestamptz(6)
   analytics_events          analytics_events[]
   organizations             organizations               @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   camera_metrics            camera_metrics[]
@@ -579,20 +902,40 @@ model audit_logs {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model event_transcripts {
-  id               BigInt           @id @default(autoincrement())
-  event_id         BigInt
-  started_at       DateTime         @db.Timestamptz(6)
-  finished_at      DateTime?        @db.Timestamptz(6)
-  speaker          String           @default("UNKNOWN")
-  text             String
-  language         String?
-  confidence       Float?
-  words            Json?
-  metadata         Json             @default("{}")
-  created_at       DateTime         @default(now()) @db.Timestamptz(6)
-  analytics_events analytics_events @relation(fields: [event_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                     BigInt            @id @default(autoincrement())
+  event_id               BigInt?
+  organization_id        BigInt?
+  store_id               BigInt?
+  workplace_id           BigInt?
+  camera_id              BigInt?
+  receipt_id             BigInt?
+  sale_session_id        BigInt?
+  external_transcript_id String?
+  source_service         String?
+  audio_url              String?
+  started_at             DateTime          @db.Timestamptz(6)
+  finished_at            DateTime?         @db.Timestamptz(6)
+  speaker                String            @default("UNKNOWN")
+  text                   String
+  language               String?
+  confidence             Float?
+  words                  Json?
+  metadata               Json              @default("{}")
+  created_at             DateTime          @default(now()) @db.Timestamptz(6)
+  analytics_events       analytics_events? @relation(fields: [event_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  organizations          organizations?    @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  stores                 stores?           @relation(fields: [store_id], references: [id], onUpdate: NoAction)
+  workplaces             workplaces?       @relation(fields: [workplace_id], references: [id], onUpdate: NoAction)
+  cameras                cameras?          @relation(fields: [camera_id], references: [id], onUpdate: NoAction)
+  receipts               receipts?         @relation(fields: [receipt_id], references: [id], onUpdate: NoAction)
+  sale_sessions          sale_sessions?    @relation(fields: [sale_session_id], references: [id], onUpdate: NoAction)
 
+  @@unique([source_service, external_transcript_id])
   @@index([event_id, started_at], map: "idx_event_transcripts_event")
+  @@index([receipt_id, started_at], map: "idx_event_transcripts_receipt")
+  @@index([sale_session_id, started_at], map: "idx_event_transcripts_sale_session")
+  @@index([workplace_id, started_at], map: "idx_event_transcripts_workplace")
+  @@index([camera_id, started_at], map: "idx_event_transcripts_camera")
 }
 
 model refresh_tokens {
@@ -620,7 +963,7 @@ model users {
   is_active       Boolean          @default(true)
   last_login_at   DateTime?        @db.Timestamptz(6)
   created_at      DateTime         @default(now()) @db.Timestamptz(6)
-  updated_at      DateTime         @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime         @default(now()) @updatedAt @db.Timestamptz(6)
   audit_logs      audit_logs[]
   refresh_tokens  refresh_tokens[]
   organizations   organizations?   @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -633,7 +976,7 @@ model worker_camera_assignments {
   is_enabled        Boolean           @default(true)
   config_version    Int               @default(1)
   assigned_at       DateTime          @default(now()) @db.Timestamptz(6)
-  updated_at        DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime          @default(now()) @updatedAt @db.Timestamptz(6)
   cameras           cameras           @relation(fields: [camera_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   analytics_workers analytics_workers @relation(fields: [worker_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
