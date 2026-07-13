@@ -1,8 +1,8 @@
 {
   "/_not-found/page": "/_not-found",
+  "/events/page": "/events",
   "/[resource]/page": "/[resource]",
   "/dashboard/page": "/dashboard",
-  "/events/[id]/page": "/events/[id]",
-  "/events/page": "/events",
-  "/page": "/"
+  "/page": "/",
+  "/events/[id]/page": "/events/[id]"
 }

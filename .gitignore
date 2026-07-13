@@ -1,6 +1,45 @@
-node_modules
-dist
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+
+# Environment files
 .env
+.env.*
+!.env.example
+
+# Logs
 *.log
-coverage
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Databases and local data
+*.db
+*.sqlite
+*.sqlite3
 packages/database/prisma/dev.db
+postgres_data/
+
+# Runtime and cache
+.cache/
+.turbo/
+.vercel/
+.nixpacks/
+tmp/
+temp/
+
+# OS and editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo

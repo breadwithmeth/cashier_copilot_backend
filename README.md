@@ -19,14 +19,17 @@ cp .env.example .env
 2. Проверить значения в `.env`:
 
 ```env
-DATABASE_URL=postgresql://cashier:cashier@postgres:5432/cashier
+POSTGRES_PASSWORD=cashier
 JWT_ACCESS_SECRET=change-me-access
 JWT_REFRESH_SECRET=change-me-refresh
+APP_ORIGIN=http://localhost:8080
+NEXT_PUBLIC_API_URL=/api
+NEXT_PUBLIC_WS_URL=/
 ONE_C_API_KEY=change-me-1c
 ONE_C_ORGANIZATION_CODE=DEMO
 ```
 
-Для запуска через `docker compose` у `DATABASE_URL` должен быть host `postgres`, потому что API подключается к Postgres внутри compose-сети.
+Docker Compose поднимает `postgres`, `api`, `web` и `proxy`. Наружу публикуется только `proxy`.
 
 3. Собрать и запустить сервисы:
 
@@ -43,8 +46,43 @@ docker compose exec api npm run db:seed
 
 После запуска:
 
-- web: `http://localhost:3001`
-- API Swagger: `http://localhost:3000/api/docs`
+- web: `http://localhost:8080`
+- API Swagger: `http://localhost:8080/api/docs`
+
+## Deploy в Coolify на одном домене
+
+В Coolify создайте `Docker Compose` resource из репозитория и назначьте домен только сервису `proxy` на порт `8080`.
+
+Пример переменных для production:
+
+```env
+POSTGRES_PASSWORD=strong-postgres-password
+JWT_ACCESS_SECRET=strong-random-access-secret
+JWT_REFRESH_SECRET=strong-random-refresh-secret
+APP_ORIGIN=https://copilot.naliv.kz
+NEXT_PUBLIC_API_URL=/api
+NEXT_PUBLIC_WS_URL=/
+ONE_C_API_KEY=strong-1c-api-key
+ONE_C_ORGANIZATION_CODE=NALIV
+WORKER_HEARTBEAT_TIMEOUT_SECONDS=90
+```
+
+После деплоя все будет доступно на одном домене:
+
+- frontend: `https://copilot.naliv.kz`
+- API: `https://copilot.naliv.kz/api`
+- Swagger: `https://copilot.naliv.kz/api/docs`
+- 1C: `https://copilot.naliv.kz/api/integrations/1c/*`
+- Python worker: `https://copilot.naliv.kz/api/workers/*`
+
+## Deploy в Coolify как два Nixpacks-проекта
+
+Если нужно деплоить API и web отдельными Coolify applications, используйте:
+
+- `apps/api/nixpacks.toml` для API;
+- `apps/web/nixpacks.toml` для frontend.
+
+Подробная инструкция: [docs/coolify-nixpacks.md](docs/coolify-nixpacks.md).
 
 ## Локальный запуск для разработки
 

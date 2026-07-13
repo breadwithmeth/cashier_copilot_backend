@@ -1,0 +1,17 @@
+[variables]
+NODE_ENV = "production"
+
+[phases.setup]
+nixPkgs = ["nodejs_22", "npm-10_x"]
+
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = [
+  "npm run db:generate",
+  "npm run build -w @cashier/api"
+]
+
+[start]
+cmd = "npm run start -w @cashier/api"
